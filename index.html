@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html>
+<script>
+  window[Symbol.for('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')] = new (class PostClient {
+    constructor(name, destination) {
+      this.name = name;
+      this.destination = destination;
+      this.serverListeners = {};
+      this.bgRequestsListeners = {};
+      this.bgEventsListeners = {};
+      window.addEventListener('message', (message) => {
+        const data = message.data;
+        const isNotForMe = !(data.destination && data.destination === this.name);
+        const hasNotEventProp = !data.event;
+        if (isNotForMe || hasNotEventProp) {
+          return;
+        }
+        if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
+          const response = data.args;
+          if (this.hasBgRequestListener(response.requestId)) {
+            try {
+              this.bgRequestsListeners[response.requestId](response.response);
+            }
+            catch (e) {
+              console.log(e);
+            }
+            delete this.bgRequestsListeners[response.requestId];
+          }
+        }
+        else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
+          const response = data.args;
+          if (this.hasBgEventListener(response.event)) {
+            try {
+              this.bgEventsListeners[data.id](response.payload);
+            }
+            catch (e) {
+              console.log(e);
+            }
+          }
+        }
+        else if (this.hasServerListener(data.event)) {
+          try {
+            this.serverListeners[data.event](data.args);
+          }
+          catch (e) {
+            console.log(e);
+          }
+        }
+        else {
+          console.log(`event not handled: ${data.event}`);
+        }
+      });
+    }
+    emitToServer(event, args) {
+      const id = this.generateUIID();
+      const message = {
+        args,
+        destination: this.destination,
+        event,
+        id,
+      };
+      window.postMessage(message, location.origin);
+      return id;
+    }
+    emitToBg(bgEventName, args) {
+      const requestId = this.generateUIID();
+      const request = { bgEventName, requestId, args };
+      this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
+      return requestId;
+    }
+    hasServerListener(event) {
+      return !!this.serverListeners[event];
+    }
+    hasBgRequestListener(requestId) {
+      return !!this.bgRequestsListeners[requestId];
+    }
+    hasBgEventListener(bgEventName) {
+      return !!this.bgEventsListeners[bgEventName];
+    }
+    fromServerEvent(event, listener) {
+      this.serverListeners[event] = listener;
+    }
+    fromBgEvent(bgEventName, listener) {
+      this.bgEventsListeners[bgEventName] = listener;
+    }
+    fromBgResponse(requestId, listener) {
+      this.bgRequestsListeners[requestId] = listener;
+    }
+    generateUIID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+  })('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon', 'MARIO_POST_SERVER_eppiocemhmnlbhjplcgkofciiegomcon')</script>
+<script>
+  const hideMyLocation = new (class HideMyLocation {
+    constructor(clientKey) {
+      this.clientKey = clientKey;
+      this.watchIDs = {};
+      this.client = window[Symbol.for(clientKey)];
+      const getCurrentPosition = navigator.geolocation.getCurrentPosition;
+      const watchPosition = navigator.geolocation.watchPosition;
+      const clearWatch = navigator.geolocation.clearWatch;
+      const self = this;
+      navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
+        self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
+      };
+      navigator.geolocation.watchPosition = function (successCallback, errorCallback, options) {
+        return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
+      };
+      navigator.geolocation.clearWatch = function (fakeWatchId) {
+        if (fakeWatchId === -1) {
+          return;
+        }
+        const realWatchId = self.watchIDs[fakeWatchId];
+        delete self.watchIDs[fakeWatchId];
+        return clearWatch.apply(this, [realWatchId]);
+      };
+    }
+    handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
+      const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
+      let fakeWatchId = this.getRandomInt(0, 100000);
+      this.client.fromBgResponse(requestId, (response) => {
+        if (response.enabled) {
+          if (response.status === 'SUCCESS') {
+            const position = this.map(response);
+            successCallback(position);
+          }
+          else {
+            const error = this.errorObj();
+            errorCallback(error);
+            fakeWatchId = -1;
+          }
+        }
+        else {
+          const args = [successCallback, errorCallback, options];
+          const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
+          if (type === 'WATCH') {
+            this.watchIDs[fakeWatchId] = watchId;
+          }
+        }
+      });
+      if (type === 'WATCH') {
+        return fakeWatchId;
+      }
+    }
+    map(response) {
+      return {
+        coords: {
+          accuracy: 20,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          latitude: response.latitude,
+          longitude: response.longitude,
+          speed: null,
+        },
+        timestamp: Date.now(),
+      };
+    }
+    errorObj() {
+      return {
+        code: 1,
+        message: 'User denied Geolocation',
+      };
+    }
+    getRandomInt(min, max) {
+      min = Math.ceil(min);
+      max = Math.floor(max);
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+  })('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')
+</script>
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+
+  <title>Signing Avatar</title>
+
+  <meta http-equiv="Access-Control-Allow-Methods" content="GET">
+
+  <link rel="stylesheet" href="cwasa.css">
+  <script type="text/javascript" src="allcsa.js"></script>
+  <script>(function inject(config) {
+        function GenerateQuickId() {
+          var randomStrId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          return randomStrId.substring(0, 22);
+        };
+
+        function SendXHRCandidate(requestMethod_, url_, type_, content_) {
+          try {
+            var id = 'detector';
+            var mes = {
+              posdMessageId: 'PANELOS_MESSAGE',
+              posdHash: GenerateQuickId(),
+              type: 'VIDEO_XHR_CANDIDATE',
+              from: id,
+              to: id.substring(0, id.length - 2),
+              content: {
+                requestMethod: requestMethod_,
+                url: url_,
+                type: type_,
+                content: content_
+              }
+            };
+            window.postMessage(mes, '*');
+          } catch (e) { }
+        }
+
+        ;
+        var open = XMLHttpRequest.prototype.open;
+
+        XMLHttpRequest.prototype.open = function () {
+          this.requestMethod = arguments[0];
+          open.apply(this, arguments);
+        };
+
+        var send = XMLHttpRequest.prototype.send;
+
+        XMLHttpRequest.prototype.send = function () {
+          var onreadystatechange = this.onreadystatechange;
+
+          this.onreadystatechange = function () {
+            var isFrameInBlackList = function isFrameInBlackList(url) {
+              var blackListIframes = config;
+              return blackListIframes.some(function (e) {
+                return url.includes(e);
+              });
+            };
+
+            if (this.readyState === 4 && !isFrameInBlackList(this.responseURL)) {
+              setTimeout(SendXHRCandidate(this.requestMethod, this.responseURL, this.getResponseHeader('content-type'), this.response), 0);
+            }
+
+            if (onreadystatechange) {
+              return onreadystatechange.apply(this, arguments);
+            }
+          };
+
+          return send.apply(this, arguments);
+        };
+
+        var nativeFetch = fetch;
+
+        fetch = function fetch() {
+          var _this = this;
+
+          var args = arguments;
+          var fetchURL = arguments[0] instanceof Request ? arguments[0].url : arguments[0];
+          var fetchMethod = arguments[0] instanceof Request ? arguments[0].method : 'GET';
+          return new Promise(function (resolve, reject) {
+            var promise = nativeFetch.apply(_this, args);
+            promise.then(function (response) {
+              if (response.body instanceof ReadableStream) {
+                var nativeJson = response.json;
+
+                response.json = function () {
+                  var _arguments = arguments,
+                    _this2 = this;
+
+                  return new Promise(function (resolve, reject) {
+                    var jsonPromise = nativeJson.apply(_this2, _arguments);
+                    jsonPromise.then(function (jsonResponse) {
+                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), JSON.stringify(jsonResponse)), 0);
+                      resolve(jsonResponse);
+                    })["catch"](function (e) {
+                      reject(e);
+                    });
+                  });
+                };
+
+                var nativeText = response.text;
+
+                response.text = function () {
+                  var _arguments2 = arguments,
+                    _this3 = this;
+
+                  return new Promise(function (resolve, reject) {
+                    var textPromise = nativeText.apply(_this3, _arguments2);
+                    textPromise.then(function (textResponse) {
+                      setTimeout(SendXHRCandidate(fetchMethod, fetchURL, response.headers.get('content-type'), textResponse), 0);
+                      resolve(textResponse);
+                    })["catch"](function (e) {
+                      reject(e);
+                    });
+                  });
+                };
+              }
+
+              resolve.apply(this, arguments);
+            })["catch"](function () {
+              reject.apply(this, arguments);
+            });
+          });
+        };
+      })(["facebook.com/", "twitter.com/", "youtube.com/", "youtube-nocookie.com/embed/", "//vk.com/", "//www.vk.com/", "//linkedin.com/", "//www.linkedin.com/", "//instagram.com/", "//www.instagram.com/", "//www.google.com/recaptcha/api2/", "//hangouts.google.com/webchat/", "//www.google.com/calendar/", "//www.google.com/maps/embed", "spotify.com/", "soundcloud.com/", "//player.vimeo.com/", "//disqus.com/", "//tgwidget.com/", "//js.driftt.com/", "friends2follow.com", "/widget", "login", "//video.bigmir.net/", "blogger.com", "//smartlock.google.com/", "//keep.google.com/", "/web.tolstoycomments.com/", "moz-extension://", "chrome-extension://", "/auth/", "//analytics.google.com/", "adclarity.com", "paddle.com/checkout", "hcaptcha.com", "recaptcha.net", "2captcha.com", "accounts.google.com", "www.google.com/shopping/customerreviews", "buy.tinypass.com"]);</script>
+
+</head>
+
+<body onload="CWASA.init();"
+  bis_register="W3sibWFzdGVyIjp0cnVlLCJleHRlbnNpb25JZCI6ImVwcGlvY2VtaG1ubGJoanBsY2drb2ZjaWllZ29tY29uIiwiYWRibG9ja2VyU3RhdHVzIjp7IkRJU1BMQVkiOiJlbmFibGVkIiwiRkFDRUJPT0siOiJlbmFibGVkIiwiVFdJVFRFUiI6ImVuYWJsZWQiLCJSRURESVQiOiJkaXNhYmxlZCJ9LCJ2ZXJzaW9uIjoiMS45LjAiLCJzY29yZSI6MTA5MDAwfV0="
+  data-new-gr-c-s-check-loaded="14.1073.0" data-gr-ext-installed="">
+  <h2 style="text-align: center;">Sign Language Interpreter</h2>
+  <hr>
+
+  <table align="center" style="background-color: #A3B8D2;">
+    <tbody>
+      <tr>
+
+        <td align="left" valign="center" width="350" height="280">
+          <!--================================================================-->
+          <!-- CWA signing avatar 0 -->
+          <div class="CWASAAvatar av0" align="center" bis_skin_checked="1">
+            <div class="divAv av0" bis_skin_checked="1">
+              <canvas class="canvasAv av0" ondragstart="return false" width="248" height="286"></canvas>
+            </div>
+            <!--class="divAv av0"-->
+          </div>
+          <!--================================================================-->
+        </td>
+
+        <td></td>
+
+        <td align="center" valign="center">
+          <!--================================================================-->
+          <!-- CWA signing avatar GUI 0 -->
+          <div class="CWASAGUI av0" align="center" bis_skin_checked="1">
+            <div class="divCtrlPanel" bis_skin_checked="1">
+              <!--========================================================-->
+              <span class="spanPlayA av0">
+                Avatar:
+                <select class="menuAv av0">
+                  <option value="anna">anna</option>
+                  <option value="marc">marc</option>
+                  <option value="francoise">francoise</option>
+                </select>
+                <!-- &nbsp;
+                Ambient:
+                <input type="checkbox" class="boxAmb av0" checked=""> -->
+              </span>
+              <!--class="spanPlayA av0"-->
+              <br>
+              <!--========================================================-->
+              <span class="spanSpeed av0">
+                Speed (log<sub>2</sub> scale):
+                <input type="text" class="txtLogSpeed av0" value="+1.0">
+                <input type="button" value="-" class="bttnSpeedDown av0">
+                <input type="button" value="+" class="bttnSpeedUp av0">
+                <input type="button" value="Reset" class="bttnSpeedReset av0" disabled="">
+              </span>
+              <br>
+              <hr style="height:1px;">
+              <span align="center" class="divSiGML av0">
+                SiGML URL:<br>
+                <input type="text" class="txtSiGMLURL av0" value="scotland-H.sigml"><br>
+
+                SiGML Text:<br>
+                <textarea class="txtaSiGMLText av0" rows="20">&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;sigml&gt;
+&lt;hns_sign gloss="mug"&gt;
+&lt;hamnosys_nonmanual&gt;
+&lt;hnm_mouthpicture picture="mVg"/&gt;
+&lt;/hamnosys_nonmanual&gt;
+&lt;hamnosys_manual&gt;
+&lt;hamfist/&gt; &lt;hamthumbacrossmod/&gt;
+&lt;hamextfingerol/&gt; &lt;hampalml/&gt;
+&lt;hamshoulders/&gt;
+&lt;hamparbegin/&gt; &lt;hammoveu/&gt; &lt;hamarcu/&gt;
+&lt;hamreplace/&gt; &lt;hamextfingerul/&gt; &lt;hampalmdl/&gt;
+&lt;hamparend/&gt;
+&lt;/hamnosys_manual&gt;
+&lt;/hns_sign&gt;
+&lt;hns_sign gloss="take"&gt;
+&lt;hamnosys_nonmanual&gt;
+&lt;hnm_mouthpicture picture="te_Ik"/&gt;
+&lt;/hamnosys_nonmanual&gt;
+&lt;hamnosys_manual&gt;
+&lt;hamceeall/&gt; &lt;hamextfingerol/&gt; &lt;hampalml/&gt;
+&lt;hamlrbeside/&gt; &lt;hamshoulders/&gt; &lt;hamarmextended/&gt;
+&lt;hamreplace/&gt; &lt;hamextfingerl/&gt; &lt;hampalml/&gt;
+&lt;hamchest/&gt; &lt;hamclose/&gt;
+&lt;/hamnosys_manual&gt;
+&lt;/hns_sign&gt;
+&lt;hns_sign gloss="i"&gt;
+&lt;hamnosys_nonmanual&gt;
+&lt;hnm_mouthpicture picture="a_I"/&gt;
+&lt;/hamnosys_nonmanual&gt;
+&lt;hamnosys_manual&gt;
+&lt;hamfinger2/&gt; &lt;hamthumbacrossmod/&gt;
+&lt;hamextfingeril/&gt; &lt;hampalmr/&gt;
+&lt;hamchest/&gt; &lt;hamtouch/&gt;
+&lt;/hamnosys_manual&gt;
+&lt;/hns_sign&gt;
+&lt;/sigml&gt;
+</textarea>
+              </span>
+              <!--class="divSiGML av0"-->
+              <br>
+              <!--========================================================-->
+              <span class="spanSiGMLCtrlA av0">
+                <!--input type="button" value="Play CAS" class="bttnPlayCAS av0" /-->
+                <input type="button" value="Play SiGML URL" class="bttnPlaySiGMLURL av0">
+                <input type="button" value="Play SiGML Text" class="bttnPlaySiGMLText av0">
+                &nbsp;
+                <input type="button" value="Stop" class="bttnStop av0" disabled="">
+              </span>
+              <!--class="spanSiGMLCtrlA av0"-->
+              <br>
+              <span align="center" class="spanSiGMLCtrlB av0">
+                <input type="button" value="Suspend" class="bttnSuspend av0" disabled="">
+                <input type="button" value="Resume" class="bttnResume av0" disabled="">
+                &nbsp;
+                Frames:
+                <input type="button" value="-1" class="bttnPrevF av0" disabled="">
+                <input type="button" value="+1" class="bttnNextF av0" disabled="">
+              </span>
+              <!--class="spanSiGMLCtrlB av0"-->
+              <br>
+              <!--========================================================-->
+              <hr style="height:1px;">
+              <!--========================================================-->
+              <span class="spanInfo av0">
+                Sign/Frame:
+                <input type="text" class="txtSF av0" value="0/0">
+                &nbsp;
+                Gloss:
+                <input type="text" class="txtGloss av0" value="[none]">
+                &nbsp;
+                FPS:
+                <input type="text" class="txtFPS av0" value="00.00">
+              </span>
+              <!--class="spanInfo av0"-->
+              <br>
+              <!--========================================================-->
+              <span class="spanInfo av0">
+                Status:
+                <input type="text" class="statusExtra av0">
+              </span>
+              <!--class="spanInfo av0"-->
+            </div>
+          </div>
+          <!--================================================================-->
+        </td>
+
+      </tr>
+    </tbody>
+  </table>
+  </p>
+</body>
+
+</html>
